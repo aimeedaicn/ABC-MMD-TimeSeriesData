@@ -1,2 +1,2 @@
 # Approximate Bayesian Computation with Maximum Mean Discrepancy for Time Series Data
-Summer Project for MSc Statistics
+Research Project 2024-2025 for MSc in Statistics at Imperial College London
