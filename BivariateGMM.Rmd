@@ -1,0 +1,463 @@
+---
+title: | 
+  | Bivariate Gaussian Mixture Model 
+author: 'Chennuo Dai'
+subtitle: ""
+output:
+  bookdown::pdf_book:
+    latex_engine: xelatex
+    keep_tex: yes
+  bookdown::html_document2:
+    toc: yes
+    toc_float: yes
+    highlight: tango
+  html_document:
+    toc: yes
+    df_print: paged
+bibliography: ["reference.bib"]
+link-citations: true
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+<style type="text/css">
+h1{
+  font-size: 24pt;
+}
+h2{
+  font-size: 18pt;
+}
+body{
+  font-size: 12pt;
+}
+</style>
+
+```{r setup, include = FALSE, tidy=TRUE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+include_solutions <- TRUE
+```
+
+```{r setup2, include=FALSE, tidy=TRUE}
+require(rmarkdown)
+require(knitr)
+require(kableExtra)
+# Put any library imports and other preamble here.
+```
+
+
+# Bivariate Gaussian Mixture Model with known parameters
+
+# observed dataset y, true posterior
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(winference)
+library(dplyr)
+source("src/sabc.R")  
+
+set.seed(27)
+
+theta_star <- list(theta = c(0.3, 0.7, 0.7, -0.7, -0.7),
+                   cov1 = matrix(c(0.5, -0.3, -0.3, 0.5), ncol = 2),
+                   cov2 = matrix(c(0.25, 0, 0, 0.25), ncol = 2)
+                  )
+theta_names <- c("p", "mu01", "mu02", "mu11", "mu12")
+theta_star_list <- list(p = theta_star$theta[1],
+                          mu01 = theta_star$theta[2],
+                          mu02 = theta_star$theta[3],
+                          mu11 = theta_star$theta[4],
+                          mu12 = theta_star$theta[5]
+                        )
+
+nobservation <- 500
+nthetas <- 512
+maxsimulation <- 10^5
+resultsprefix <- "results/BivariateGMM/"
+plotprefix <- "plots/BivariateGMM/"
+
+rprior <- function(n, hyperparams){
+  return(matrix(c(runif(n), runif(4 * n, -1, 1)), nrow = n))
+}
+
+# log dprior
+dprior <- function(theta, hyperparams){
+  eval <- dunif(theta[, 1], log = TRUE) +
+            dunif(theta[, 2], min = -1, max = 1, log = TRUE) +
+            dunif(theta[, 3], min = -1, max = 1, log = TRUE) +
+            dunif(theta[, 4], min = -1, max = 1, log = TRUE) +
+            dunif(theta[, 5], min = -1, max = 1, log = TRUE)
+  return(eval)
+}
+
+# generating process
+simulate <- function(theta){
+  u  <- runif(nobservation)
+  ind <- u < theta[1]
+  z  <- matrix(NA_real_, ncol = 2, nrow = nobservation)
+  
+  n1 <- sum(!ind)                    
+  n2 <- sum(ind)                     
+  
+  if (n1 > 0)                        
+    z[!ind, ] <- fast_rmvnorm(n1, mean = theta[2:3],
+                              covariance = theta_star$cov1)
+  
+  if (n2 > 0)                       
+    z[ind, ]  <- fast_rmvnorm(n2, mean = theta[4:5],
+                              covariance = theta_star$cov2)
+  
+  z
+}
+
+y <- simulate(theta_star$theta)
+
+```
+
+
+# Summary statistics
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+resultsprefix <- "results/BivariateGMM/"
+plotprefix <- "plots/BivariateGMM/"
+set.seed(7)
+
+# summary statistics (bar{mu1}, bar{mu2}, m11, m22, m12)
+sumstat_raw <- function(z){
+  s <- numeric(5)
+  m <- colMeans(z)
+  s[1:2] <- m
+  M <- crossprod(as.matrix(z)) / nrow(z)      
+  s[3] <- M[1,1]
+  s[4] <- M[2,2]
+  s[5] <- M[1,2]
+  matrix(s, ncol = 1)
+}
+
+
+# summary statistics (bar{mu1}, bar{mu2})
+sumstat_central <- function(z){
+  m <- colMeans(z)          
+  matrix(m, ncol = 1)       
+}
+
+y_summary_raw     <- sumstat_raw(y)
+y_summary_central <- sumstat_central(y)
+
+l2 <- function(a, b) sqrt(sum((a - b)^2))  
+
+eucdiscrep_raw <- function(z) {
+  z_summary <- sumstat_raw(z)
+  l2(z_summary, y_summary_raw)
+}
+eucdiscrep_central <- function(z) {
+  z_summary <- sumstat_central(z)
+  l2(z_summary, y_summary_central)
+}
+
+# initialize dataframes to store samples
+method_names <- c("SummaryRaw", "SummaryCentral", "MMD")
+abc_df <- data.frame(methods = rep(method_names, each = nthetas),
+                     samples.p = NA,
+                     samples.mu01 = NA,
+                     samples.mu02 = NA,
+                     samples.mu11 = NA,
+                     samples.mu12 = NA
+                    )
+
+# summary statistics (bar{mu1}, bar{mu2}, m11, m22, m12)
+args_raw <- list(
+  nthetas = nthetas,
+  rprior = rprior,
+  dprior = dprior,
+  simulate = simulate,
+  discrepancy = eucdiscrep_raw,
+  parameter_names = theta_names,
+  thetadim = length(theta_names),
+  ydim = ncol(y)
+)
+raw_out <- sabc(args_raw, maxsimulation = maxsimulation,
+                savefile = paste0(resultsprefix, "raw_out.RData"))
+abc_df[index(1, nthetas), 2:ncol(abc_df)] <- sabc_get_last_samples(raw_out)[, theta_names]
+
+# summary statistics (bar{mu1}, bar{mu2})
+args_cen <- list(
+  nthetas = nthetas,
+  rprior = rprior,
+  dprior = dprior,
+  simulate = simulate,
+  discrepancy = eucdiscrep_central,
+  parameter_names = theta_names,
+  thetadim = length(theta_names),
+  ydim = ncol(y)
+)
+cen_out <- sabc(args_cen, maxsimulation = maxsimulation,
+                savefile = paste0(resultsprefix, "cen_out.RData"))
+abc_df[index(2, nthetas), 2:ncol(abc_df)] <- sabc_get_last_samples(cen_out)[, theta_names]
+
+```
+
+
+# mmd
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+source("src/mmd/mmd_V.R")
+set.seed(7)
+
+bandwidth <- median(dist(y))
+mmdsq <- function(z) mmd_V(y, z, bandwidth)
+
+args_mmd <- list(
+  nthetas = nthetas,
+  rprior = rprior,
+  dprior = dprior,
+  simulate = simulate,
+  discrepancy = mmdsq,
+  parameter_names = theta_names,
+  thetadim = length(theta_names),
+  ydim = ncol(y)
+)
+mmd_out <- sabc(args_mmd, maxsimulation = maxsimulation,
+                savefile = paste0(resultsprefix, "mmd_out.RData"))
+abc_df[index(3, nthetas), 2:ncol(abc_df)] <- sabc_get_last_samples(mmd_out)[, theta_names]
+
+write.csv(abc_df, paste0(resultsprefix, "abc_df.csv"), row.names = FALSE)
+                              
+```
+
+
+# plot
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(27)
+
+abc_df$methods <- factor(abc_df$methods,
+                         levels = c("SummaryRaw","SummaryCentral","MMD"))
+
+# color
+my_colours <- c(
+  "SummaryRaw"     = "#E69F00",  
+  "SummaryCentral" = "#009E73",  
+  "MMD"            = "#56B4E9"   
+)
+
+# legend breaks and labels
+legend_breaks <- c("SummaryCentral", "SummaryRaw", "MMD")
+legend_labels <- c(
+  expression(paste("Summary statistics (", bar(mu)[1], ", ", bar(mu)[2],")")),
+  expression(paste("Summary statistics (", bar(mu)[1], ", ", bar(mu)[2], ", ",
+                   m[11], ", ", m[22], ", ", m[12], ")")),
+  "MMD"
+)
+
+common_theme <- theme_classic(base_size = 16) +
+  theme(panel.border = element_rect(colour = "black", fill = NA, size = 1))
+
+pdf(paste0(plotprefix, "posterior_densities.pdf"), width = 18, height = 8)
+
+# parameter p
+g1 <- ggplot(abc_df, aes(x = samples.p, colour = methods, fill = methods)) +
+  geom_density(alpha = 0.5) +
+  labs(x = expression(p)) +
+  change_sizes(16, 20) +
+  scale_color_manual(values = my_colours, breaks = legend_breaks, labels = legend_labels, name = "") +
+  scale_fill_manual(values = my_colours, breaks = legend_breaks, labels = legend_labels, name = "") +
+  geom_vline(xintercept = theta_star$theta[1], linetype = 2) +
+  xlim(0, 1) +                     
+  common_theme +
+  theme(legend.position = "none")
+
+
+# parameter mu01
+g2 <- ggplot(abc_df, aes(x = samples.mu01, colour = methods, fill = methods)) +
+  geom_density(alpha = 0.5) +
+  labs(x = expression(mu["01"])) +
+  change_sizes(16, 20) +
+  scale_color_manual(values = my_colours, breaks = legend_breaks, labels = legend_labels, name = "") +
+  scale_fill_manual(values = my_colours, breaks = legend_breaks, labels = legend_labels, name = "") +
+  geom_vline(xintercept = theta_star$theta[2], linetype = 2) +
+  xlim(-1, 1) +                    
+  common_theme +
+  theme(legend.position = "none")
+
+# parameter mu02
+g3 <- ggplot(abc_df, aes(x = samples.mu02, colour = methods, fill = methods)) +
+  geom_density(alpha = 0.5) +
+  labs(x = expression(mu["02"])) +
+  change_sizes(16, 20) +
+  scale_color_manual(values = my_colours, breaks = legend_breaks, labels = legend_labels, name = "") +
+  scale_fill_manual(values = my_colours, breaks = legend_breaks, labels = legend_labels, name = "") +
+  geom_vline(xintercept = theta_star$theta[3], linetype = 2) +
+  xlim(-1, 1) +                    
+  common_theme +
+  theme(legend.position = "none")
+
+# parameter mu11
+g4 <- ggplot(abc_df, aes(x = samples.mu11, colour = methods, fill = methods)) +
+  geom_density(alpha = 0.5) +
+  labs(x = expression(mu["11"])) +
+  change_sizes(16, 20) +
+  scale_color_manual(values = my_colours, breaks = legend_breaks, labels = legend_labels, name = "") +
+  scale_fill_manual(values = my_colours, breaks = legend_breaks, labels = legend_labels, name = "") +
+  geom_vline(xintercept = theta_star$theta[4], linetype = 2) +
+  xlim(-1, 1) +                   
+  common_theme +
+  theme(legend.position = "none")
+
+# parameter mu12
+g5 <- ggplot(abc_df, aes(x = samples.mu12, colour = methods, fill = methods)) +
+  geom_density(alpha = 0.5) +
+  labs(x = expression(mu["12"])) +
+  change_sizes(16, 20) +
+  scale_color_manual(values = my_colours, breaks = legend_breaks, labels = legend_labels, name = "") +
+  scale_fill_manual(values = my_colours, breaks = legend_breaks, labels = legend_labels, name = "") +
+  geom_vline(xintercept = theta_star$theta[5], linetype = 2) +
+  xlim(-1, 1) +                    
+  common_theme +
+  theme(legend.position = "none")
+
+# legend
+g6 <- ggplot(abc_df, aes(x = samples.mu01, colour = methods, fill = methods)) +
+  geom_density(alpha = 0.5) +
+  scale_color_manual(values = my_colours, breaks = legend_breaks, labels = legend_labels, name = "") +
+  scale_fill_manual(values = my_colours, breaks = legend_breaks, labels = legend_labels, name = "") +
+  common_theme +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical",   
+    legend.title = element_blank(),
+    legend.key.size = unit(2, "line"),
+    legend.text = element_text(size = 14)
+  )
+
+gridExtra::grid.arrange(g1, g2, g3, g4, g5, g_legend(g6), ncol = 3)
+dev.off()
+
+# plot contours
+plot_and_save_contour <- function(method){
+  pdf(paste0(plotprefix, "contour_", method, ".pdf"), width = 14)
+  g1 <- ggplot(filter(abc_df, methods == method),
+               aes(x = samples.mu01, y = samples.mu02)
+              ) +
+          geom_density_2d(aes(color = ..level..), size = 1) +  
+          scale_color_distiller(palette = "Spectral") +        
+          labs(x = expression(mu["01"]), y = expression(mu["02"])) +
+          xlim(-2, 2) +
+          ylim(-2, 2) +
+          change_sizes(16, 20) +
+          geom_vline(xintercept = theta_star$theta[2], linetype = 2) +
+          geom_hline(yintercept = theta_star$theta[3], linetype = 2) +
+          common_theme +
+          theme(legend.position = "none") 
+  g2 <- ggplot(filter(abc_df, methods == method),
+               aes(x = samples.mu11, y = samples.mu12)
+              ) +
+          geom_density_2d(aes(color = ..level..), size = 1) +  
+          scale_color_distiller(palette = "Spectral") +
+          labs(x = expression(mu["11"]), y = expression(mu["12"])) +
+          xlim(-2, 2) +
+          ylim(-2, 2) +
+          change_sizes(16, 20) +
+          geom_vline(xintercept = theta_star$theta[4], linetype = 2) +
+          geom_hline(yintercept = theta_star$theta[5], linetype = 2) +
+          common_theme +
+          theme(legend.position = "none") 
+  gridExtra::grid.arrange(g1, g2, ncol = 2)
+  dev.off()
+}
+
+for (method in method_names){
+  plot_and_save_contour(method)
+}
+
+# plot data
+pdf(paste0(plotprefix, "data.pdf"), width = 8, height = 8)  
+g1 <- ggplot(data.frame(y1 = y[, 1], y2 = y[, 2]),
+             aes(x = y1, y = y2)) +
+      geom_point(size = 1.5, colour = "black") +
+      labs(x = expression(y[i1]), y = expression(y[i2])) +
+      xlim(-1, 1) + ylim(-1, 1) +
+      change_sizes(16, 20) +
+      geom_vline(xintercept = theta_star$theta[2], linetype = 2) +
+      geom_hline(yintercept = theta_star$theta[3], linetype = 2) +
+      geom_vline(xintercept = theta_star$theta[4], linetype = 2) +
+      geom_hline(yintercept = theta_star$theta[5], linetype = 2) +
+      theme_classic(base_size = 16) +
+      theme(panel.border = element_rect(colour = "black", fill = NA, size = 1),
+            legend.position = "none")
+g1
+dev.off()
+
+# thresholds
+threshold_history <- rbind(
+  cbind(method_names[1], cumsum(raw_out$ncomputed), raw_out$threshold_history),
+  cbind(method_names[2], cumsum(cen_out$ncomputed), cen_out$threshold_history),
+  cbind(method_names[3], cumsum(mmd_out$ncomputed), mmd_out$threshold_history)
+)
+threshold_history <- data.frame(
+  methods      = threshold_history[, 1],
+  nsimulations = as.numeric(threshold_history[, 2]),
+  thresholds   = as.numeric(threshold_history[, 3])
+)
+
+draw_thresholds <- function(method){
+  g1 <- ggplot(data = threshold_history %>% filter(methods == method), 
+               aes(x = nsimulations, y = thresholds)) +
+        geom_line(color = my_colours[method]) +
+        geom_point(color = my_colours[method]) +
+        labs(x = "number of model simulations", y = "threshold") +
+        xlim(0, max(threshold_history$nsimulations) * 1.15) +
+        change_sizes(16, 20) +
+        common_theme
+  return(g1)
+}
+
+for (method in method_names){
+  g <- draw_thresholds(method)
+  pdf(paste0(plotprefix, "thresholds_", method, ".pdf"), width = 8, height = 6) 
+  print(g)
+  dev.off()
+}
+
+g_all <- ggplot(threshold_history, 
+                aes(x = nsimulations, y = thresholds, 
+                    color = methods, group = methods)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "number of model simulations", y = "threshold") +
+  change_sizes(16, 20) +
+  common_theme +
+  scale_color_manual(values = my_colours,
+                     breaks = legend_breaks,
+                     labels = legend_labels,
+                     name = "") +  
+  theme(
+    legend.position = c(0.99, 0.99),
+    legend.justification = c("right", "top"),
+    legend.background = element_blank(),
+    legend.key = element_blank(),
+    legend.key.size = unit(0.7, "lines"),
+    legend.key.width = unit(1.5, "lines"), 
+    legend.text = element_text(size = 10)
+  )
+
+pdf(paste0(plotprefix, "thresholds.pdf"), width = 8, height = 6)
+print(g_all)
+dev.off()
+
+# computational times
+ztemp <- simulate(theta_star$theta)
+print("Computational times of one evaluation:")
+microbenchmark::microbenchmark(
+  eucdiscrep_raw(ztemp),
+  eucdiscrep_central(ztemp),
+  mmdsq(ztemp),
+  times = 1000
+)
+
+```
+
+# Code appendix
+
+```{r ref.label=knitr::all_labels(), echo = T, eval = F}
+```
+

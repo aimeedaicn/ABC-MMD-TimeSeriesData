@@ -1,0 +1,502 @@
+---
+title: | 
+  | AR(1) model
+author: 'Chennuo Dai'
+subtitle: ""
+output:
+  bookdown::pdf_book:
+    latex_engine: xelatex
+    keep_tex: yes
+  bookdown::html_document2:
+    toc: yes
+    toc_float: yes
+    highlight: tango
+  html_document:
+    toc: yes
+    df_print: paged
+bibliography: ["reference.bib"]
+link-citations: true
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+<style type="text/css">
+h1{
+  font-size: 24pt;
+}
+h2{
+  font-size: 18pt;
+}
+body{
+  font-size: 12pt;
+}
+</style>
+
+```{r setup, include = FALSE, tidy=TRUE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+include_solutions <- TRUE
+```
+
+```{r setup2, include=FALSE, tidy=TRUE}
+require(rmarkdown)
+require(knitr)
+require(kableExtra)
+```
+
+
+# AR(1) model with known parameters
+
+# observed dataset y, true posterior
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(RColorBrewer)
+
+source("src/AR1.R")  
+
+nobservation <- 200                          
+ar1_model    <- init_ar1_model(D = nobservation)
+rprior       <- ar1_model$rprior
+dprior       <- ar1_model$dprior
+simulate     <- ar1_model$simulate
+
+method_names <- c("MMD", "Delay reconstruction", "True posterior") 
+
+# true parameters, phi = 0.7, log(sigma) = 0.9
+theta_star <- c(0.7, 0.9)
+seed_vec   <- c(77)
+
+traj_list <- lapply(seed_vec, function(s) {
+  set.seed(s)
+  y <- as.numeric(simulate(theta_star))
+  tibble(
+    time  = seq_along(y),
+    value = y,
+    lab   = paste0("Seed ", s)
+  )
+})
+df_all <- bind_rows(traj_list)
+
+y_obs <- df_all$value               
+D     <- length(y_obs)
+
+palette_fun <- scales::hue_pal()(length(seed_vec))
+names(palette_fun) <- paste0("Seed ", seed_vec)
+
+# observed dataset
+plt <- ggplot(df_all, aes(x = time, y = value, colour = lab, group = lab)) +
+  geom_line(size = 1.2) +
+  scale_color_manual(values = palette_fun, guide = FALSE) +
+  labs(x = "Time step", y = "Process value") +
+  theme_classic(base_size = 14) +
+  theme(
+    panel.border   = element_rect(color = "black", fill = NA, size = 1),
+    panel.grid     = element_blank(),
+    axis.text      = element_text(size = 14),  
+    axis.title     = element_text(size = 14),
+    legend.position = "none"
+  )
+
+plot_dir <- "plots/AR1/"
+result_dir <- "results/AR1/"
+
+ggsave(file.path(plot_dir, "observed_dataset.pdf"), plt, width = 14, height = 8)
+
+# true marginal posteriors
+n_grid   <- 500
+phi_g    <- seq(-0.99, 0.99, length.out = n_grid) 
+logsig_g <- seq(-2, 2, length.out = n_grid)
+dphi     <- phi_g[2] - phi_g[1]
+dlogsig  <- logsig_g[2] - logsig_g[1]
+
+logpost_fun <- function(phi, log_sigma, x) {
+  if (abs(phi) >= 1) return(-Inf)
+  sigma <- exp(log_sigma)
+  n <- length(x)
+  ll1 <- dnorm(x[1], mean = 0, sd = sigma / sqrt(1 - phi^2), log = TRUE)
+  mu  <- phi * x[-n]
+  llt <- sum(dnorm(x[-1], mean = mu, sd = sigma, log = TRUE))
+  loglik <- ll1 + llt
+  logprior_phi <- if (phi > -1 && phi < 1) log(0.5) else -Inf
+  logprior_lsg <- dnorm(log_sigma, mean = 0, sd = 1, log = TRUE)
+  loglik + logprior_phi + logprior_lsg
+}
+
+logpost_mat <- outer(phi_g, logsig_g,
+                     Vectorize(function(a, b) logpost_fun(a, b, y_obs)))
+
+post_mat <- exp(logpost_mat - max(logpost_mat, na.rm = TRUE))
+post_mat <- post_mat / (sum(post_mat, na.rm = TRUE) * dphi * dlogsig)
+
+density_phi   <- rowSums(post_mat, na.rm = TRUE) * dlogsig
+density_lsg   <- colSums(post_mat, na.rm = TRUE) * dphi
+
+df_phi <- tibble(value   = phi_g,
+                 density = density_phi,
+                 param   = "phi",
+                 method  = method_names[3])
+
+df_lsg <- tibble(value   = logsig_g,
+                 density = density_lsg,
+                 param   = "logsigma",
+                 method  = method_names[3])
+
+df_long <- bind_rows(df_phi, df_lsg)
+
+write.csv(df_phi,
+          file = file.path(result_dir, "posterior_marginal_theta1.csv"),
+          row.names = FALSE)
+write.csv(df_lsg,
+          file = file.path(result_dir, "posterior_marginal_theta2.csv"),
+          row.names = FALSE)
+
+my_colours <- c(`True posterior` = brewer.pal(3, "Accent")[1])
+
+plot_marginal <- function(df_sub, true_val, xlab_expr) {
+  ggplot(df_sub, aes(x = value, y = density,
+                     colour = method, fill = method)) +
+    geom_density(stat = "identity", alpha = 0.5) +
+    scale_color_manual(name = "", values = my_colours) +
+    scale_fill_manual(name = "", values = my_colours) +
+    geom_vline(xintercept = true_val, linetype = 2) +
+    labs(x = xlab_expr, y = "density") +
+    theme_classic(base_size = 14) +
+    theme(panel.border = element_rect(colour = "black", fill = NA),
+          legend.position = "none")
+}
+
+p_phi <- plot_marginal(df_long |> filter(param == "phi"),
+                       theta_star[1], expression(phi))
+p_lsg <- plot_marginal(df_long |> filter(param == "logsigma"),
+                       theta_star[2], expression(log(sigma)))
+
+ggsave(file.path(plot_dir, "posterior_marginal_theta1.pdf"),
+       p_phi, width = 8, height = 6)
+ggsave(file.path(plot_dir, "posterior_marginal_theta2.pdf"),
+       p_lsg, width = 8, height = 6)
+
+# true posterior contour
+df_joint <- expand_grid(phi = phi_g, logsigma = logsig_g) |>
+  mutate(density = as.vector(t(post_mat)))
+
+p_joint <- ggplot(df_joint, aes(phi, logsigma)) +
+  geom_contour(aes(z = density, colour = after_stat(level)),  
+               bins = 10, size = 0.7) +                        
+  scale_colour_distiller(palette = "Spectral", direction = -1, guide = "none") +
+  labs(x = expression(phi), y = expression(log(sigma))) +
+  scale_x_continuous(limits = c(0, 1)) +     
+  scale_y_continuous(limits = c(0.0, 2)) +     
+  geom_vline(xintercept = theta_star[1], linetype = 2, colour = "black") +
+  geom_hline(yintercept = theta_star[2], linetype = 2, colour = "black") +
+  theme_classic(base_size = 14) +
+  theme(panel.border = element_rect(colour = "black", fill = NA))
+
+ggsave(file.path(plot_dir, "posterior_contour.pdf"),
+       p_joint, width = 8, height = 6)
+
+```
+
+
+# MMD
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(winference)
+library(ggplot2)
+library(dplyr)
+
+source("src/sabc.R")
+source("src/AR1.R")
+source("src/mmd/mmd_V.R")
+
+resultsprefix  <- "results/AR1/"
+plotprefix     <- "plots/AR1/"
+
+set.seed(77)
+
+theta_star     <- list(theta = c(0.7, 0.9))  
+theta_names    <- c("theta1", "theta2")
+param_cols     <- paste0("samples.", theta_names) 
+
+nobservation   <- length(y_obs)  
+nthetas        <- 2048
+maxsimulation  <- 1*1e5 
+
+y <- y_obs
+bandwidth <- median(dist(y))
+
+mmdsq <- function(z) mmd_V(matrix(y, ncol = 1), matrix(z, ncol = 1), bandwidth)
+
+args_mmd <- list(
+  nthetas         = nthetas,
+  rprior          = rprior,
+  dprior          = dprior,
+  simulate        = simulate,
+  discrepancy     = mmdsq,
+  parameter_names = theta_names,
+  thetadim        = length(theta_names),
+  ydim            = nobservation          
+)
+
+mmd_out <- sabc(args_mmd, maxsimulation = maxsimulation)
+save(mmd_out, file = paste0(resultsprefix, "mmd.RData"))
+
+mmd_df <- as.data.frame(sabc_get_last_samples(mmd_out)[, theta_names])
+colnames(mmd_df) <- param_cols
+mmd_df$methods   <- method_names[1]
+mmd_df           <- mmd_df[, c("methods", param_cols)]
+
+write.csv(mmd_df,
+          file = paste0(resultsprefix, "mmd.csv"),
+          row.names = FALSE)
+
+```
+
+
+# delay reconstruction
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(77)
+
+source("src/mmd/reconstruction_V.R")            
+source("src/sabc.R")   
+
+delay_reconstruct <- function(series, tau = 1L, stride = 1L){
+  series <- as.numeric(series)
+  n  <- length(series)
+  t0 <- max(tau) + 1L
+  idx <- seq.int(t0, n, by = stride)
+  m <- length(idx)
+  d <- length(tau) + 1L
+  M <- matrix(NA_real_, nrow = m, ncol = d)
+  M[,1] <- series[idx]
+  for (j in seq_along(tau)) {
+    M[, j+1] <- series[idx - tau[j]]
+  }
+  colnames(M) <- c("y_t", paste0("y_t_minus_", tau))
+  M
+}
+
+tau    <- c(1)
+stride <- 2L    
+Y_obs_delay <- delay_reconstruct(y, tau = tau, stride = stride)
+
+bandwidth2 <- median(dist(Y_obs_delay))
+
+mmddelay <- function(z_path){
+  y_sim <- if (is.matrix(z_path)) as.numeric(z_path[,1]) else as.numeric(z_path)
+  Z_delay <- delay_reconstruct(y_sim, tau = tau, stride = stride)
+  mmd_V_delay(Y_obs_delay, Z_delay, bandwidth2)  
+}
+
+args_delay <- list(
+  nthetas         = nthetas,
+  rprior          = rprior,
+  dprior          = dprior,
+  simulate        = simulate,      
+  discrepancy     = mmddelay,         
+  parameter_names = theta_names,
+  thetadim        = length(theta_names),
+  ydim            = nobservation   
+)
+
+delay_out <- sabc(args_delay, maxsimulation = maxsimulation)
+save(delay_out, file = paste0(resultsprefix, "mmddelay.RData"))
+
+delay_df <- as.data.frame(sabc_get_last_samples(delay_out)[, theta_names])
+colnames(delay_df) <- param_cols
+delay_df$methods <- method_names[2]
+delay_df           <- delay_df[, c("methods", param_cols)]
+
+write.csv(delay_df,
+          file = paste0(resultsprefix, "mmddelay.csv"),
+          row.names = FALSE)
+
+```
+
+
+# plot
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(winference)
+library(ggplot2)
+library(dplyr)
+library(forcats)          
+library(RColorBrewer)     
+library(gridExtra)        
+library(microbenchmark) 
+
+resultsprefix <- "results/AR1/"
+plotprefix    <- "plots/AR1/"
+
+method_names <- c("MMD", "Delay reconstruction", "True posterior") 
+
+true_theta   <- c(theta1 = 0.7, theta2 = 0.9)
+my_colours   <- setNames(brewer.pal(length(method_names), "Set2"), method_names)
+
+mmd_df <- read.csv(file.path(resultsprefix, "mmd.csv")) |>
+  mutate(methods = method_names[1])
+delay_df <- read.csv(paste0(resultsprefix, "mmddelay.csv"))      |> 
+  mutate(methods = method_names[2])
+
+make_df_all <- function(sample_col, post_csv) {
+  densities <- list(
+    density(mmd_df       [[sample_col]]),
+    density(delay_df      [[sample_col]])
+  )
+  df_abc <- lapply(seq_along(densities), function(i) {
+    d <- densities[[i]]
+    tibble(
+      value   = d$x,
+      density = d$y,
+      methods = method_names[i]
+    )
+  }) %>% bind_rows()
+  
+  df_post <- read.csv(file.path(resultsprefix, post_csv)) %>%
+    mutate(methods = method_names[3])
+  
+  bind_rows(df_abc, df_post)
+}
+
+df1_all <- make_df_all("samples.theta1", "posterior_marginal_theta1.csv")
+df2_all <- make_df_all("samples.theta2", "posterior_marginal_theta2.csv")
+
+plot_marginal2 <- function(df_sub, true_val, xlab_expr) {
+  ggplot(df_sub, aes(x = value, y = density,
+                     colour = methods,
+                     fill = methods
+                     )) +
+    geom_density(stat = "identity", alpha = 0.5) +
+    geom_vline(xintercept = true_val, linetype = 2) +
+    scale_color_manual(values = my_colours, name = "") +
+    scale_fill_manual(values = my_colours,  name = "") +
+    labs(x = xlab_expr, y = "density") +
+    theme_classic(base_size = 14) +
+    theme(panel.border   = element_rect(colour = "black", fill = NA),
+          legend.position = c(0.95, 0.95),
+          legend.justification = c("right", "top"))
+}
+
+p1 <- plot_marginal2(df1_all, true_theta["theta1"], expression(theta[1])) +
+  theme(legend.position = c(0.05, 0.95),
+        legend.justification = c("left", "top"))
+p2 <- plot_marginal2(df2_all, true_theta["theta2"], expression(theta[2])) +
+  theme(legend.position = c(0.05, 0.95),
+        legend.justification = c("left", "top"))
+
+ggsave(file.path(plotprefix, "compare_theta1.pdf"), p1, width = 8, height = 6)
+ggsave(file.path(plotprefix, "compare_theta2.pdf"), p2, width = 8, height = 6)
+
+# time
+ztemp <- simulate(true_theta)
+
+timings <- microbenchmark(
+  MMD   = mmdsq(ztemp),
+  Delay = mmddelay(ztemp),
+  times = 1000
+)
+
+print(timings)
+
+```
+
+
+# Compare
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(scales)
+
+true_theta <- c(phi = 0.7, logsigma = 0.9)  
+
+sabc_to_dataframe <- function(res, colnames_guess = c("theta1","theta2")) {
+  as_step_df <- function(M, step_id) {
+    df <- as.data.frame(M)
+    if (ncol(df) >= 2) {
+      names(df)[1:2] <- colnames_guess
+      df <- df %>% transmute(phi = .data[[colnames_guess[1]]],
+                             logsigma = .data[[colnames_guess[2]]],
+                             step = step_id)
+    } else {
+      stop("Samples matrix has <2 columns; cannot map to (phi, logsigma).")
+    }
+    df
+  }
+
+  out <- NULL
+  if (!is.null(res$thetas_history)) {
+    for (s in seq_along(res$thetas_history)) {
+      out <- bind_rows(out, as_step_df(res$thetas_history[[s]], s))
+    }
+  } else if (!is.null(res$samples_history)) {
+    for (s in seq_along(res$samples_history)) {
+      out <- bind_rows(out, as_step_df(res$samples_history[[s]], s))
+    }
+  } else if (!is.null(res$theta_history)) {
+    for (s in seq_along(res$theta_history)) {
+      out <- bind_rows(out, as_step_df(res$theta_history[[s]], s))
+    }
+  } else {
+    if (!is.null(res$samples)) {
+      out <- as_step_df(res$samples, 1L)
+    } else {
+      stop("Cannot find sample history in SABC result object.")
+    }
+  }
+  out
+}
+
+step_gradient <- scale_colour_gradient2(low = muted("blue"), mid = "yellow", high = muted("red"), midpoint = NA, name = "SMC step")
+
+# MMD result
+load("results/AR1/mmd.RData")
+df_mmd <- sabc_to_dataframe(mmd_out, c("theta1","theta2"))
+mid_mmd <- (min(df_mmd$step) + max(df_mmd$step)) / 2
+
+g_left <- ggplot(df_mmd, aes(x = phi, y = logsigma, colour = step)) +
+  geom_point(alpha = 0.5, size = 1) +
+  scale_colour_gradient2(low = muted("blue"), mid = "yellow",
+                         high = muted("red"), midpoint = mid_mmd,
+                         name = "SMC step") +
+  geom_vline(xintercept = true_theta["phi"], linetype = 2) +
+  geom_hline(yintercept = true_theta["logsigma"], linetype = 2) +
+  labs(x = expression(phi), y = expression(log(sigma))) +
+  theme_classic(base_size = 14) +
+  theme(
+    panel.border = element_rect(colour = "black", fill = NA),
+    legend.position = "none"         
+  )
+  
+# MMD with delay reconstruction result
+load("results/AR1/mmddelay.RData")  
+df_mmd_delay <- sabc_to_dataframe(delay_out, c("theta1","theta2"))
+mid_delay <- (min(df_mmd_delay$step) + max(df_mmd_delay$step)) / 2
+
+g_right <- ggplot(df_mmd_delay, aes(x = phi, y = logsigma, colour = step)) +
+  geom_point(alpha = 0.5, size = 1) +
+  scale_colour_gradient2(low = muted("blue"), mid = "yellow",
+                         high = muted("red"), midpoint = mid_delay,
+                         name = "SMC step") +
+  geom_vline(xintercept = true_theta["phi"], linetype = 2) +
+  geom_hline(yintercept = true_theta["logsigma"], linetype = 2) +
+  labs(x = expression(phi), y = expression(log(sigma))) +
+  theme_classic(base_size = 14) +
+  theme(
+    panel.border = element_rect(colour = "black", fill = NA),
+    legend.position = "none"     
+  )
+
+ggsave("plots/AR1/mmd.pdf", g_left, width = 6, height = 5)
+ggsave("plots/AR1/mmd_delay.pdf", g_right, width = 6, height = 5)
+
+```
+
+
+# Code appendix
+
+```{r ref.label=knitr::all_labels(), echo = T, eval = F}
+```
+
+

@@ -1,0 +1,818 @@
+---
+title: | 
+  | Ecological dynamic systems with unknown parameters
+author: 'Chennuo Dai'
+subtitle: ""
+output:
+  bookdown::pdf_book:
+    latex_engine: xelatex
+    keep_tex: yes
+  bookdown::html_document2:
+    toc: yes
+    toc_float: yes
+    highlight: tango
+  html_document:
+    toc: yes
+    df_print: paged
+bibliography: ["reference.bib"]
+link-citations: true
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+<style type="text/css">
+h1{
+  font-size: 24pt;
+}
+h2{
+  font-size: 18pt;
+}
+body{
+  font-size: 12pt;
+}
+</style>
+
+```{r setup, include = FALSE, tidy=TRUE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+include_solutions <- TRUE
+```
+
+```{r setup2, include=FALSE, tidy=TRUE}
+require(rmarkdown)
+require(knitr)
+require(kableExtra)
+# Put any library imports and other preamble here.
+```
+
+
+# Ecological Dynamic Systems with unknown parameters
+
+# observed dataset y
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# blowfly data
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(RColorBrewer)
+library(scales)
+
+source("src/Blowfly.R")    
+source("src/sabc.R")
+
+data_mat <- matrix(c(
+  1,   948,   2,
+  2,   942,   4,
+  3,   911,   6,
+  4,   858,   8,
+  5,   801,  10,
+  6,   676,  12,
+  7,   504,  14,
+  8,   397,  16,
+  9,   248,  18,
+  10,  146,  20,
+  11, 1801,  22,
+  12, 6235,  24,
+  13, 5974,  26,
+  14, 8921,  28,
+  15, 6610,  30,
+  16, 5973,  32,
+  17, 5673,  34,
+  18, 3875,  36,
+  19, 2361,  38,
+  20, 1352,  40,
+  21, 1226,  42,
+  22,  912,  44,
+  23,  521,  46,
+  24,  363,  48,
+  25,  229,  50,
+  26,  142,  52,
+  27,   82,  54,
+  28,  542,  56,
+  29,  939,  58,
+  30, 2431,  60,
+  31, 3687,  62,
+  32, 4543,  64,
+  33, 4535,  66,
+  34, 5441,  68,
+  35, 4412,  70,
+  36, 3022,  72,
+  37, 2656,  74,
+  38, 1967,  76,
+  39, 1295,  78,
+  40,  915,  80,
+  41,  551,  82,
+  42,  313,  84,
+  43,  167,  86,
+  44,   95,  88,
+  45,   93,  90,
+  46,   60,  92,
+  47,   68,  94,
+  48, 5259,  96,
+  49, 6673,  98,
+  50, 5441, 100,
+  51, 3987, 102,
+  52, 2952, 104,
+  53, 3648, 106,
+  54, 4222, 108,
+  55, 3889, 110,
+  56, 2295, 112,
+  57, 1509, 114,
+  58,  928, 116,
+  59,  739, 118,
+  60,  566, 120,
+  61,  383, 122,
+  62,  274, 124,
+  63,  192, 126,
+  64,  226, 128,
+  65,  519, 130,
+  66, 1224, 132,
+  67, 2236, 134,
+  68, 3818, 136,
+  69, 6208, 138,
+  70, 5996, 140,
+  71, 5789, 142,
+  72, 6652, 144,
+  73, 7939, 146,
+  74, 4868, 148,
+  75, 3952, 150,
+  76, 2712, 152,
+  77, 1734, 154,
+  78, 1224, 156,
+  79,  703, 158,
+  80,  508, 160,
+  81,  366, 162,
+  82,  279, 164,
+  83,  243, 166,
+  84,  343, 168,
+  85,  761, 170,
+  86, 1025, 172,
+  87, 1221, 174,
+  88, 1600, 176,
+  89, 2267, 178,
+  90, 3290, 180,
+  91, 3471, 182,
+  92, 3637, 184,
+  93, 3703, 186,
+  94, 4876, 188,
+  95, 5364, 190,
+  96, 4890, 192,
+  97, 3029, 194,
+  98, 1950, 196,
+  99, 1225, 198,
+  100,1076, 200,
+  101, 905, 202,
+  102, 772, 204,
+  103, 628, 206,
+  104, 473, 208,
+  105, 539, 210,
+  106, 825, 212,
+  107,1702, 214,
+  108,2868, 216,
+  109,4473, 218,
+  110,5221, 220,
+  111,6592, 222,
+  112,6400, 224,
+  113,4752, 226,
+  114,3521, 228,
+  115,2719, 230,
+  116,1931, 232,
+  117,1500, 234,
+  118,1082, 236,
+  119, 849, 238,
+  120, 774, 240,
+  121, 864, 242,
+  122,1306, 244,
+  123,1624, 246,
+  124,2224, 248,
+  125,2423, 250,
+  126,2959, 252,
+  127,3547, 254,
+  128,7237, 256,
+  129,5218, 258,
+  130,5311, 260,
+  131,4273, 262,
+  132,3270, 264,
+  133,2281, 266,
+  134,1549, 268,
+  135,1091, 270,
+  136, 796, 272,
+  137, 610, 274,
+  138, 445, 276,
+  139, 894, 278,
+  140,1454, 280,
+  141,2262, 282,
+  142,2363, 284,
+  143,3847, 286,
+  144,3876, 288,
+  145,3935, 290,
+  146,3479, 292,
+  147,3415, 294,
+  148,3861, 296,
+  149,3571, 298,
+  150,3113, 300,
+  151,2319, 302,
+  152,1630, 304,
+  153,1297, 306,
+  154, 861, 308,
+  155, 761, 310,
+  156, 659, 312,
+  157, 701, 314,
+  158, 762, 316,
+  159,1188, 318,
+  160,1778, 320,
+  161,2428, 322,
+  162,3806, 324,
+  163,4519, 326,
+  164,5646, 328,
+  165,4851, 330,
+  166,5374, 332,
+  167,4713, 334,
+  168,7367, 336,
+  169,7236, 338,
+  170,5345, 340,
+  171,3636, 342,
+  172,2417, 344,
+  173,1258, 346,
+  174, 766, 348,
+  175, 479, 350,
+  176, 402, 352,
+  177, 248, 354,
+  178, 254, 356,
+  179, 604, 358,
+  180,1346, 360
+), ncol = 3, byrow = TRUE)
+
+y_obs <- as.numeric(data_mat[,2])  
+
+T_len      <- length(y_obs)
+eco_model  <- init_ecological_model(T = T_len)
+rprior     <- eco_model$rprior
+dprior     <- eco_model$dprior
+simulate   <- eco_model$simulate
+
+theta_names   <- c("logP","logN0","log_sigma_d","log_sigma_p","log_tau","log_delta")
+param_cols    <- paste0("samples.", theta_names)
+nthetas       <- 256
+maxsimulation <- 1e5
+
+plotprefix    <- "plots/Blowfly/"
+resultsprefix <- "results/Blowfly/"
+
+plt <- tibble(
+  time = seq_along(y_obs),
+  obs  = y_obs
+) |>
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = obs), colour = "steelblue", size = 0.9) +
+  labs(
+    x = "Time",
+    y = "Number of blowflies"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+  panel.border = element_rect(colour = "black", fill = NA),
+  axis.title = element_text(size = 20)  
+)
+
+ggsave(file.path(plotprefix, "observed_blowfly.pdf"), plt, width = 20, height = 6)
+
+```
+
+
+# summary statistics
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(77)
+
+plotprefix    <- "plots/Blowfly/"
+resultsprefix <- "results/Blowfly/"
+
+method_names <- c("Summary statistics", "MMD", "Curve matching", "Delay reconstruction", "Curve matching and delay reconstruction", "True posterior")
+y <- y_obs
+
+sumstat <- function(z){
+  z  <- as.numeric(z)
+  z1 <- z / 1000
+  dz <- diff(z) / 1000
+  c(quantile(z1, probs = c(0.25, 0.5, 0.75, 1.0), names = FALSE),
+    quantile(dz, probs = c(0.25, 0.5, 0.75, 1.0), names = FALSE))
+}
+
+y_summary <- sumstat(y)
+l2norm <- function(a, b) sqrt(sum((a - b)^2))
+
+eucdiscrep <- function(z) {
+  z_summary <- sumstat(z)
+  l2norm(z_summary, y_summary)
+}
+
+args_rej <- list(
+  nthetas         = nthetas,
+  rprior          = rprior,
+  dprior          = dprior,
+  simulate        = simulate,
+  discrepancy     = eucdiscrep,
+  parameter_names = theta_names,
+  thetadim        = length(theta_names),
+  ydim            = T_len
+)
+
+rej_out <- sabc(args_rej, maxsimulation = maxsimulation)
+save(rej_out, file = file.path(resultsprefix, "statistics.RData"))
+
+rej_df <- as.data.frame(sabc_get_last_samples(rej_out)[, theta_names])
+colnames(rej_df) <- param_cols
+rej_df$methods   <- method_names[1]
+rej_df <- rej_df[, c("methods", param_cols)]
+write.csv(rej_df, file = file.path(resultsprefix, "statistics.csv"), row.names = FALSE)
+
+```
+
+
+# MMD
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(77)
+source("src/mmd/mmd_V.R")
+bandwidth <- {
+  d <- as.numeric(dist(matrix(y, ncol = 1)))
+  max(stats::median(d, na.rm = TRUE), 1e-12)
+}
+
+mmdsq <- function(z) {
+  mmd_V(matrix(y, ncol = 1), matrix(z, ncol = 1), bandwidth)
+}
+
+args_mmd <- list(
+  nthetas         = nthetas,
+  rprior          = rprior,
+  dprior          = dprior,
+  simulate        = simulate,
+  discrepancy     = mmdsq,
+  parameter_names = theta_names,
+  thetadim        = length(theta_names),
+  ydim            = T_len
+)
+
+mmd_out <- sabc(args_mmd, maxsimulation = maxsimulation)
+save(mmd_out, file = file.path(resultsprefix, "mmd.RData"))
+
+mmd_df <- as.data.frame(sabc_get_last_samples(mmd_out)[, theta_names])
+colnames(mmd_df) <- param_cols
+mmd_df$methods   <- method_names[2]
+mmd_df <- mmd_df[, c("methods", param_cols)]
+write.csv(mmd_df, file = file.path(resultsprefix, "mmd.csv"), row.names = FALSE)
+
+```
+
+
+# curve matching 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(77)
+source("src/mmd/mmdcurve_joint.R")
+
+y <- y_obs
+
+t_idx <- seq_along(y)   
+
+ell_x <- {
+  d <- as.numeric(dist(matrix(y, ncol = 1)))
+  med <- stats::median(d, na.rm = TRUE)
+  max(med, 1e-8)
+}
+ell_t <- {
+  d <- as.numeric(dist(t_idx))   
+  med <- stats::median(d, na.rm = TRUE)
+  max(med, 1e-8)
+}
+
+ell_t <- 5
+
+mmd_curve <- function(z){
+  z   <- as.numeric(z)
+  t_z <- seq_along(z)  
+  mmdcurve_vstat_c(
+    matrix(y, ncol = 1), matrix(z, ncol = 1),
+    t_idx, t_z,         
+    ell_t, ell_x
+  )
+}
+
+args_curve <- list(
+  nthetas         = nthetas,
+  rprior          = rprior,
+  dprior          = dprior,
+  simulate        = simulate,
+  discrepancy     = mmd_curve,
+  parameter_names = theta_names,
+  thetadim        = length(theta_names),
+  ydim            = T_len
+)
+
+curve_out <- sabc(args_curve, maxsimulation = maxsimulation)
+save(curve_out, file = file.path(resultsprefix, "curve.RData"))
+
+curve_df <- as.data.frame(sabc_get_last_samples(curve_out)[, theta_names])
+colnames(curve_df) <- param_cols
+curve_df$methods   <- method_names[3]
+curve_df           <- curve_df[, c("methods", param_cols)]
+write.csv(curve_df, file = file.path(resultsprefix, "curve.csv"), row.names = FALSE)
+
+```
+
+
+# delay reconstruction
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(77)
+source("src/mmd/reconstruction_V.R")
+source("src/sabc.R")
+
+y <- y_obs
+
+delay_reconstruct <- function(series, tau = 1L, stride = 1L){
+  series <- as.numeric(series)
+  n  <- length(series)
+  t0 <- max(tau) + 1L
+  idx <- seq.int(t0, n, by = stride)     
+  m <- length(idx)
+  d <- length(tau) + 1L
+  M <- matrix(NA_real_, nrow = m, ncol = d)
+  M[,1] <- series[idx]
+  for (j in seq_along(tau)) M[, j+1] <- series[idx - tau[j]]
+  colnames(M) <- c("y_t", paste0("y_t_minus_", tau))
+  M
+}
+
+tau    <- c(1,5) 
+stride <- 2L
+
+Y_obs_delay <- delay_reconstruct(y, tau = tau, stride = stride)
+bandwidth2  <- {
+  d <- as.numeric(dist(Y_obs_delay))
+  med <- stats::median(d, na.rm = TRUE)
+  max(med, 1e-8)
+}
+
+mmddelay <- function(z_path){
+  z_vec   <- if (is.matrix(z_path)) as.numeric(z_path[,1]) else as.numeric(z_path)
+  Z_delay <- delay_reconstruct(z_vec, tau = tau, stride = stride)
+  mmd_V_delay(Y_obs_delay, Z_delay, bandwidth2)
+}
+
+args_delay <- list(
+  nthetas         = nthetas,
+  rprior          = rprior,
+  dprior          = dprior,
+  simulate        = simulate,
+  discrepancy     = mmddelay,
+  parameter_names = theta_names,
+  thetadim        = length(theta_names),
+  ydim            = T_len                
+)
+
+delay_out <- sabc(args_delay, maxsimulation = maxsimulation)
+save(delay_out, file = file.path(resultsprefix, "mmddelay.RData"))
+
+delay_df <- as.data.frame(sabc_get_last_samples(delay_out)[, theta_names])
+colnames(delay_df) <- param_cols
+delay_df$methods   <- method_names[4]
+delay_df           <- delay_df[, c("methods", param_cols)]
+write.csv(delay_df, file = file.path(resultsprefix, "mmddelay.csv"), row.names = FALSE)
+
+```
+
+
+# combination
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(77)
+source("src/mmd/mmdcurve_joint.R")   
+
+y <- y_obs
+t_idx <- seq_along(y)   
+
+delay_reconstruct_with_t <- function(series, tau = 1L, stride = 1L, t_all = NULL){
+  series <- as.numeric(series)
+  n  <- length(series)
+  if (is.null(t_all)) t_all <- seq_len(n)       
+  stopifnot(length(t_all) == n)
+  t0  <- max(tau) + 1L
+  idx <- seq.int(t0, n, by = stride)            
+  m   <- length(idx)
+  d   <- length(tau) + 1L
+  M   <- matrix(NA_real_, nrow = m, ncol = d)
+  M[,1] <- series[idx]
+  for (j in seq_along(tau)) M[, j+1] <- series[idx - tau[j]]
+  list(M = M, t = as.numeric(t_all[idx]))
+}
+
+tau    <- c(1, 5) 
+stride <- 2L
+
+obs_delay <- delay_reconstruct_with_t(y, tau = tau, stride = stride, t_all = t_idx)
+
+ell_x_delay <- {
+  d <- as.numeric(dist(obs_delay$M))   
+  med <- stats::median(d, na.rm = TRUE)
+  max(med, 1e-8)
+}
+ell_t_delay <- {
+  d <- as.numeric(dist(obs_delay$t))   
+  med <- stats::median(d, na.rm = TRUE)
+  max(med, 1e-8)
+}
+
+ell_t_delay <- 5
+
+mmd_delay_time <- function(z_path){
+  z_vec <- if (is.matrix(z_path)) as.numeric(z_path[,1]) else as.numeric(z_path)
+  t_sim <- seq_along(z_vec) 
+  sim_delay <- delay_reconstruct_with_t(z_vec, tau = tau, stride = stride, t_all = t_sim)
+
+  mmdcurve_vstat_c(
+    obs_delay$M,  sim_delay$M,  
+    obs_delay$t,  sim_delay$t,  
+    ell_t_delay,  ell_x_delay
+  )
+}
+
+args_delay_time <- list(
+  nthetas         = nthetas,
+  rprior          = rprior,
+  dprior          = dprior,
+  simulate        = simulate,
+  discrepancy     = mmd_delay_time,
+  parameter_names = theta_names,
+  thetadim        = length(theta_names),
+  ydim            = length(y)
+)
+
+combine_out <- sabc(args_delay_time, maxsimulation = maxsimulation)
+save(combine_out, file = file.path(resultsprefix, "combine.RData"))
+
+combine_df <- as.data.frame(sabc_get_last_samples(combine_out)[, theta_names])
+colnames(combine_df) <- param_cols
+combine_df$methods   <- method_names[5]  
+combine_df           <- combine_df[, c("methods", param_cols)]
+write.csv(combine_df, file = file.path(resultsprefix, "combine.csv"), row.names = FALSE)
+
+```
+
+
+# plot
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(forcats)
+library(gridExtra)
+
+resultsprefix <- "results/Blowfly/"
+plotprefix    <- "plots/Blowfly/"
+dir.create(plotprefix, recursive = TRUE, showWarnings = FALSE)
+
+
+method_names <- c("Summary statistics", "MMD", "Curve matching", "Delay reconstruction", "Curve matching and delay reconstruction")
+
+statistics_df <- read_csv(file.path(resultsprefix, "statistics.csv"), show_col_types = FALSE) |>
+  mutate(methods = method_names[1])
+mmd_df        <- read_csv(file.path(resultsprefix, "mmd.csv"), show_col_types = FALSE) |>
+  mutate(methods = method_names[2])
+curve_df      <- read_csv(file.path(resultsprefix, "curve.csv"), show_col_types = FALSE) |>
+  mutate(methods = method_names[3])
+delay_df      <- read_csv(file.path(resultsprefix, "mmddelay.csv"), show_col_types = FALSE) |>
+  mutate(methods = method_names[4])
+combine_df    <- read_csv(file.path(resultsprefix, "combine.csv"), show_col_types = FALSE) |>
+  mutate(methods = method_names[5])
+
+theta_names <- c("logP","logN0","log_sigma_d","log_sigma_p","log_tau","log_delta")
+param_cols  <- paste0("samples.", theta_names)
+
+check_have <- function(df) all(param_cols %in% names(df))
+if (!all(vapply(list(statistics_df, mmd_df, curve_df, delay_df, combine_df), check_have, TRUE))) {
+  stop("Some of the result CSV files do not contain the expected parameter columns.", paste(param_cols, collapse=", "))
+}
+
+bind_all <- bind_rows(statistics_df, mmd_df, curve_df, delay_df, combine_df) |>
+  select(methods, all_of(param_cols))
+
+my_colours <- c(
+  "Summary statistics" = "#1f77b4",
+  "MMD"                = "#ff7f0e",
+  "Curve matching"     = "#FFD700",
+  "Delay reconstruction" = "#228B22",
+  "Curve matching and delay reconstruction" = "#9467bd"
+)
+
+plot_param_density <- function(param_label,
+                               xlab_expr    = param_label,
+                               legend_pos   = c(0.01, 0.99),
+                               legend_just  = c("left","top"),
+                               legend_scale = 0.7)  
+{
+  xcol <- paste0("samples.", param_label)
+  dfp <- bind_all |>
+    dplyr::select(methods, dplyr::all_of(xcol)) |>
+    dplyr::rename(value = dplyr::all_of(xcol)) |>
+    dplyr::mutate(
+      methods      = factor(methods, levels = method_names),   
+      methods_draw = factor(methods, levels = rev(method_names))  
+    )
+
+  ggplot(dfp, aes(x = value, colour = methods, fill = methods, group = methods_draw)) +
+    geom_density(alpha = 0.35) +
+    scale_color_manual(values = my_colours,
+                       breaks = method_names, limits = method_names, name = "") +
+    scale_fill_manual(values  = my_colours,
+                      breaks = method_names, limits = method_names, name = "") +
+    labs(x = xlab_expr, y = "density") +
+    theme_classic(base_size = 14) +
+    theme(
+      panel.border         = element_rect(colour = "black", fill = NA),
+      legend.position      = legend_pos,
+      legend.justification = legend_just,
+      legend.text          = element_text(size = rel(legend_scale)),
+      legend.title         = element_text(size = rel(legend_scale)),
+      legend.key.height    = grid::unit(0.9 * legend_scale, "lines"),
+      legend.key.width     = grid::unit(0.9 * legend_scale, "lines"),
+      legend.spacing       = grid::unit(0.9 * legend_scale, "lines")
+    )
+}
+
+
+p_logP <- plot_param_density("logP", expression(log(P)))
+p_logN0 <- plot_param_density("logN0",         expression(log(y[0])))
+p_lsd   <- plot_param_density("log_sigma_d",   expression(log(sigma[d])))
+p_lsp   <- plot_param_density("log_sigma_p",   expression(log(sigma[p])))
+p_ltau  <- plot_param_density("log_tau",       expression(log(tau)))
+p_ld    <- plot_param_density("log_delta",     expression(log(delta)),
+                             legend_pos = c(0.99, 0.99),
+                             legend_just = c("right","top"))
+
+
+ggsave(file.path(plotprefix, "marginal_logP.pdf"),        p_logP,  width=8, height=6)
+ggsave(file.path(plotprefix, "marginal_logN0.pdf"),       p_logN0, width=8, height=6)
+ggsave(file.path(plotprefix, "marginal_log_sigma_d.pdf"), p_lsd,   width=8, height=6)
+ggsave(file.path(plotprefix, "marginal_log_sigma_p.pdf"), p_lsp,   width=8, height=6)
+ggsave(file.path(plotprefix, "marginal_log_tau.pdf"),     p_ltau,  width=8, height=6)
+ggsave(file.path(plotprefix, "marginal_log_delta.pdf"),   p_ld,    width=8, height=6)
+
+
+# trajectories
+set.seed(111)
+post_mean_vec <- function(df_one_method) {
+  colMeans(df_one_method[, param_cols])
+}
+
+means_list <- list(
+  "Summary statistics"                = post_mean_vec(statistics_df),
+  "MMD"                               = post_mean_vec(mmd_df),
+  "Curve matching"                    = post_mean_vec(curve_df),
+  "Delay reconstruction"              = post_mean_vec(delay_df),
+  "Curve matching and delay reconstruction" = post_mean_vec(combine_df)
+)
+
+plot_traj_for_method <- function(mname, theta_mean_log) {
+  y_sim <- as.numeric(simulate(as.numeric(theta_mean_log)))  
+  dfp <- tibble(
+    time  = seq_along(y_obs),
+    obs   = y_obs,
+    sim   = y_sim
+  )
+  ggplot(dfp, aes(time)) +
+    geom_line(aes(y = obs), colour = "steelblue", size=0.9) +
+    geom_line(aes(y = sim), colour = "#ff7f0e", size=0.9) +
+    labs(x = "Time", y = "Number of blowflies"
+         ) +
+    coord_cartesian(ylim = c(0, 10000)) + 
+    theme_classic(base_size = 14) +
+    theme(panel.border = element_rect(colour = "black", fill = NA),
+  axis.title = element_text(size = 20))
+}
+
+traj_plots <- lapply(names(means_list), function(nm) plot_traj_for_method(nm, means_list[[nm]]))
+names(traj_plots) <- names(means_list)
+
+for (nm in names(traj_plots)) {
+  ggsave(file.path(plotprefix, paste0("trajectory_", gsub(" ", "_", nm), ".pdf")),
+         traj_plots[[nm]], width=20, height=6)
+}
+
+
+# threshold
+load(file.path(resultsprefix, "statistics.RData"))
+load(file.path(resultsprefix, "mmd.RData"))
+load(file.path(resultsprefix, "curve.RData"))
+load(file.path(resultsprefix, "mmddelay.RData"))
+load(file.path(resultsprefix, "combine.RData"))
+
+threshold_history <- rbind(
+  cbind(method_names[1], cumsum(rej_out$ncomputed),       rej_out$threshold_history),
+  cbind(method_names[2], cumsum(mmd_out$ncomputed),       mmd_out$threshold_history),
+  cbind(method_names[3], cumsum(curve_out$ncomputed),     curve_out$threshold_history),
+  cbind(method_names[4], cumsum(delay_out$ncomputed),     delay_out$threshold_history),
+  cbind(method_names[5], cumsum(combine_out$ncomputed),   combine_out$threshold_history)
+) |>
+  as.data.frame() |>
+  setNames(c("methods", "nsimulations", "thresholds")) |>
+  mutate(
+    methods       = factor(methods, levels = method_names),
+    nsimulations  = as.numeric(as.character(nsimulations)),
+    thresholds    = as.numeric(as.character(thresholds))
+  )
+
+draw_thresholds <- function(method_name) {
+  dat <- threshold_history |> dplyr::filter(methods == method_name)
+  ggplot(dat, aes(x = nsimulations, y = thresholds, colour = methods)) +
+    geom_line() + geom_point() +
+    scale_color_manual(values = my_colours, name = "", breaks = method_names, limits = method_names,
+                       guide = "none") +
+    labs(x = "number of model simulations", y = "threshold") +
+    xlim(0, max(threshold_history$nsimulations)) +
+    theme_classic(base_size = 14) +
+    theme(panel.border = element_rect(colour = "black", fill = NA))
+}
+
+g1 <- draw_thresholds(method_names[1])
+g2 <- draw_thresholds(method_names[2])
+g3 <- draw_thresholds(method_names[3])
+g4 <- draw_thresholds(method_names[4])
+g5 <- draw_thresholds(method_names[5])
+
+pdf(file.path(plotprefix, "thresholds.pdf"), width = 35, height = 6)
+gridExtra::grid.arrange(g1, g2, g3, g4, g5, nrow = 1)
+dev.off()
+
+```            
+
+# boxplots              
+```{r echo=FALSE, message=FALSE, warning=FALSE}          
+library(stringr)
+set.seed(2026)
+n_rep <- 200L
+
+curve_L2 <- function(a, b) {
+  a <- as.numeric(a); b <- as.numeric(b)
+  sqrt(sum((a - b)^2))
+}
+
+posterior_mean_curve_distance <- function(df_one_method, label) {
+  theta_hat <- colMeans(df_one_method[, param_cols, drop = FALSE])
+
+  d <- replicate(n_rep, {
+    y_sim <- as.numeric(simulate(theta_hat))
+    y_sim <- y_sim[seq_along(y_obs)]
+    curve_L2(y_sim, y_obs)
+  })
+
+  tibble(method = label, dist = d)
+}
+
+curve_dist_df <- dplyr::bind_rows(
+  posterior_mean_curve_distance(statistics_df, method_names[1]),
+  posterior_mean_curve_distance(mmd_df,        method_names[2]),
+  posterior_mean_curve_distance(curve_df,      method_names[3]),
+  posterior_mean_curve_distance(delay_df,      method_names[4]),
+  posterior_mean_curve_distance(combine_df,    method_names[5])
+)
+
+
+fills_light <- setNames(scales::alpha(my_colours, 0.25), names(my_colours))
+
+curve_dist_df <- curve_dist_df |>
+  dplyr::mutate(method = factor(method, levels = method_names))
+
+p_curve_box <- ggplot(curve_dist_df, aes(x = method, y = dist)) +
+  geom_boxplot(aes(fill = method, colour = method),
+               width = 0.5, notch = TRUE,
+               outlier.shape = NA,        
+               linewidth = 0.9) +
+  scale_fill_manual(values = fills_light, guide = "none") +
+  scale_color_manual(values = my_colours, guide = "none") +
+  scale_x_discrete(limits = method_names,
+                   labels = function(x) stringr::str_wrap(x, width = 18)) +
+  labs(
+    x = NULL,
+    y = expression(
+      "Euclidean distance  " * "||" *
+      y[1:n]^{(b)} - y[1:n]^{plain("obs")} * "||"[2]
+    )
+  ) +
+  theme_classic(base_size = 14) +
+  theme(panel.border = element_rect(colour = "black", fill = NA),
+        axis.text.x  = element_text(angle = 0, hjust = 0.5, vjust = 1))
+
+ggsave(file.path(plotprefix, "posterior_mean_curve_boxplot.pdf"),
+       p_curve_box, width = 9, height = 5.2)
+
+```
+
+              
+
+# Code appendix
+
+```{r ref.label=knitr::all_labels(), echo = T, eval = F}
+```
+
